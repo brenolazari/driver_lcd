@@ -4,13 +4,17 @@ use ieee.numeric_std.all;
 use ieee.std_logic_unsigned.all;
 
 entity driver_lcd is
+generic (
+    FSM_INITIAL_STATE : std_logic_vector(3 downto 0) := "0000"
+    -- ...
+);
 port (
 
-	reset    : in std_logic;                     -- Entrada de referencia do relogio
-	clock    : in std_logic;                     -- Sinal de reset de global do bloco
-	data     : in std_logic_vector(7 downto 0);	 -- Entrada de dados
-	addr     : in std_logic_vector(4 downto 0);  -- Entrada de endereços
-	enable   : in std_logic;                     -- Entrada de habilitação de escrita de dados
+    reset    : in std_logic;                     -- Entrada de referencia do relogio
+    clock    : in std_logic;                     -- Sinal de reset de global do bloco
+    data     : in std_logic_vector(7 downto 0);	 -- Entrada de dados
+    addr     : in std_logic_vector(4 downto 0);  -- Entrada de endereços
+    enable   : in std_logic;                     -- Entrada de habilitação de escrita de dados
     lcd_data : out std_logic_vector(7 downto 0); -- Barramento de dados do display de LCD
     lcd_en   : out std_logic;                    -- Sinal de enable do display de LCD
     lcd_rs   : out std_logic                     -- Sinal de controle de dado do display de LCD
@@ -41,8 +45,21 @@ end driver_lcd;
 
 architecture driver_lcd_arch of driver_lcd is
 
+    signal fsm : std_logic_vector(3 downto 0) := FSM_INITIAL_STATE;
+
 begin
 
+    process (clock, rst)
+    begin
+        if rst = '1' then
+            fsm <= FSM_INITIAL_STATE;
+        elsif clock'event and clock = '1' then
+
+        
+
+        end if;
+
+    end process;
 
 
 end driver_lcd_arch;
