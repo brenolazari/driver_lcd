@@ -5,8 +5,12 @@ use ieee.std_logic_unsigned.all;
 
 entity driver_lcd is
 generic (
-    FSM_INITIAL_STATE : std_logic_vector(1 downto 0) := "00";
-    FSM_LOOP_STATE    : std_logic_vector(1 downto 0) := "01"
+    REG_BANK_SIZE            : integer := 32;
+    FSM_INITIAL_STATE        : std_logic_vector(2 downto 0) := "000";
+    FSM_SEND_CMD_STATE_ONE   : std_logic_vector(2 downto 0) := "001";
+    FSM_SEND_CMD_STATE_TWO   : std_logic_vector(2 downto 0) := "010";
+    FSM_SEND_CMD_STATE_THREE : std_logic_vector(2 downto 0) := "011";
+    FSM_LOOP_STATE           : std_logic_vector(2 downto 0) := "100"
 );
 port (
 
@@ -48,15 +52,17 @@ architecture driver_lcd_arch of driver_lcd is
     -- fsm varre oo banco de registrador e escreve no lcd
         -- primeiro estado deve configurar o display
         -- se ligar de ir setando a poriscoa do cursor (pular linha por ex) do lcd
-    signal fsm    : std_logic_vector(1 downto 0) := FSM_INITIAL_STATE;
-    
+    signal fsm    : std_logic_vector(2 downto 0) := FSM_INITIAL_STATE;
+
     -- CONFIGS BASICAS... DEVE RODAR NO PRIMEIRO ESTADO
     type config_instructions_array is array (0 to 3) of std_logic_vector(7 downto 0);
     signal config_instructions: config_instructions_array := (0 => "00000001", 1 => "00111000", 2 => "00001111", 3 => "00000110");
 
-begin
+    -- BANCO DE REGISTRADORES
+    type reg_bank_array is array (0 to (REG_BANK_SIZE - 1)) of std_logic_vector(7 downto 0);
+    signal reg_bank : reg_bank_array;
 
-    -- TODO: Implementar/Instanciar banco de registradores
+begin
 
     process (clock, rst)
     variable config_int_index : integer := 0;
@@ -68,18 +74,23 @@ begin
             case fsm is
                 when FSM_INITIAL_STATE =>
 
-                    -- TODO: limpar registradores
-
-                    -- dps de configurar vai p estado de execucao que fica varrendo o banco de registrador e mandando o comando pro lcd
-                    if (config_int_index = 4) then
-
-                        fsm <= FSM_LOOP_STATE;
-
+                -- dps de configurar vai p estado de execucao que fica varrendo o banco de registrador e mandando o comando pro lcd
+                if (config_int_index = 4) then
+                    
+                    fsm <= FSM_LOOP_STATE;
+                    
                     else
-
-                        lcd_data <= config_instructions(config_int_index); -- limpa display
+                    
+                        -- limpar registradores
+                        for i in 0 to (REG_BANK_SIZE - 1) loop
+                            reg_bank(i) <= "00000000"; 
+                        end loop;
+                        
+                        -- pega configs basicas do array
+                        lcd_data <= config_instructions(config_int_index);
                         lcd_rs   <= '0';
                         
+                        -- incrementa index e vai p estado de enviar comando pro lcd
                         config_int_index := config_int_index + 1;
                         fsm <= FSM_CONFIG_STATE_ONE;
 
