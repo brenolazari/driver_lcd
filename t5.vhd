@@ -49,55 +49,59 @@ architecture driver_lcd_arch of driver_lcd is
         -- primeiro estado deve configurar o display
         -- se ligar de ir setando a poriscoa do cursor (pular linha por ex) do lcd
     signal fsm    : std_logic_vector(1 downto 0) := FSM_INITIAL_STATE;
-    signal s_rs   : std_logic := '0';
-    signal s_en   : std_logic := '0';
-    signal s_data : std_logic_vector(7 downto 0) := "00000000";
-
-    procedure send_command_to_lcd(signal rs   : in integer;
-                                  signal en   : in integer;
-                                  signal data : in std_logic_vector(7 downto 0)) is
-    begin
-        -- TODO: protocolo que ta no pdf do sor
-    end procedure;
+    
+    -- CONFIGS BASICAS... DEVE RODAR NO PRIMEIRO ESTADO
+    type config_instructions_array is array (0 to 3) of std_logic_vector(7 downto 0);
+    signal config_instructions: config_instructions_array := (0 => "00000001", 1 => "00111000", 2 => "00001111", 3 => "00000110");
 
 begin
 
     -- TODO: Implementar/Instanciar banco de registradores
 
     process (clock, rst)
+    variable config_int_index : integer := 0;
     begin
         if rst = '1' then
+            config_int_index := 0;
             fsm <= FSM_INITIAL_STATE;
-        elsif clock'event and clock = '1' then
+        elsif clock'event and clock = '1' and rst = '0' then
             case fsm is
                 when FSM_INITIAL_STATE =>
 
                     -- TODO: limpar registradores
 
-                    s_data <= "00000001"; -- limpa display
-                    s_rs   <= '0';
-                    s_en   <= '0';
-                    send_command_to_lcd(s_rs, s_en, s_data);
+                    -- dps de configurar vai p estado de execucao que fica varrendo o banco de registrador e mandando o comando pro lcd
+                    if (config_int_index = 4) then
 
-                    s_data <= "00111000"; -- config basica
-                    s_rs   <= '0';
-                    s_en   <= '0';
-                    send_command_to_lcd(s_rs, s_en, s_data);
+                        fsm <= FSM_LOOP_STATE;
 
-                    s_data <= "00001111"; -- config cursor
-                    s_rs   <= '0';
-                    s_en   <= '0';
-                    send_command_to_lcd(s_rs, s_en, s_data);
+                    else
 
-                    s_data <= "00000110"; -- config cursor
-                    s_rs   <= '0';
-                    s_en   <= '0';
-                    send_command_to_lcd(s_rs, s_en, s_data);
+                        lcd_data <= config_instructions(config_int_index); -- limpa display
+                        lcd_rs   <= '0';
+                        
+                        config_int_index := config_int_index + 1;
+                        fsm <= FSM_CONFIG_STATE_ONE;
 
-                    -- ?? dps da config inicial, vai p loop que fica varrendo o registrador e printando no LCD
-                    fsm <= FSM_LOOP_STATE;
+                    end if;
+
+                when FSM_SEND_CMD_STATE_ONE =>
+
+                    lcd_en <= '1';
+                    fsm <= FSM_SEND_CMD_STATE_TWO;
+
+                when FSM_SEND_CMD_STATE_TWO =>
+
+                    lcd_en <= '0';
+                    fsm <= FSM_SEND_CMD_STATE_THREE;
+
+                when FSM_SEND_CMD_STATE_THREE =>
+
+                    fsm <= FSM_INITIAL_STATE;
 
                 when FSM_LOOP_STATE =>
+
+                    -- TODO
                     -- varrer reg e printar no LCD
 
                     -- if enable = '1' then -- TODO: Talvez validar addr e enable tbm
