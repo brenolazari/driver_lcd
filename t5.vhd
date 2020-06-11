@@ -5,6 +5,11 @@ use ieee.std_logic_unsigned.all;
 
 entity driver_lcd is
 generic (
+    ZERO_BYTE                : std_logic_vector(7 downto 0) := "00000000";
+    BASIC_CONFIG             : std_logic_vector(7 downto 0) := "00111000";
+    CURSOR_CONTROL_CONFIG    : std_logic_vector(7 downto 0) := "00001111";
+    CURSOR_MVMT_CONFIG       : std_logic_vector(7 downto 0) := "00000110";
+    CLEAN_DISPLAY_CONFIG     : std_logic_vector(7 downto 0) := "00000001";
     REG_BANK_SIZE            : integer := 32;
     FSM_INITIAL_STATE        : std_logic_vector(2 downto 0) := "000";
     FSM_SEND_CMD_STATE_ONE   : std_logic_vector(2 downto 0) := "001";
@@ -56,7 +61,7 @@ architecture driver_lcd_arch of driver_lcd is
 
     -- CONFIGS BASICAS... DEVE RODAR NO PRIMEIRO ESTADO
     type config_instructions_array is array (0 to 3) of std_logic_vector(7 downto 0);
-    signal config_instructions: config_instructions_array := (0 => "00000001", 1 => "00111000", 2 => "00001111", 3 => "00000110");
+    signal config_instructions: config_instructions_array := (0 => BASIC_CONFIG, 1 => CURSOR_CONTROL_CONFIG, 2 => CURSOR_MVMT_CONFIG, 3 => CLEAN_DISPLAY_CONFIG);
 
     -- BANCO DE REGISTRADORES
     type reg_bank_array is array (0 to (REG_BANK_SIZE - 1)) of std_logic_vector(7 downto 0);
@@ -64,13 +69,15 @@ architecture driver_lcd_arch of driver_lcd is
 
 begin
 
-    process (clock, rst)
+    process (clock, reset)
     variable config_int_index : integer := 0;
+    variable reg_index        : integer := 0;
     begin
-        if rst = '1' then
+        if reset = '1' then
             config_int_index := 0;
+            reg_index := 0;
             fsm <= FSM_INITIAL_STATE;
-        elsif clock'event and clock = '1' and rst = '0' then
+        elsif clock'event and clock = '1' and reset = '0' then
             case fsm is
                 when FSM_INITIAL_STATE =>
 
@@ -79,22 +86,21 @@ begin
                     
                     fsm <= FSM_LOOP_STATE;
                     
-                    else
-                    
-                        -- limpar registradores
-                        for i in 0 to (REG_BANK_SIZE - 1) loop
-                            reg_bank(i) <= "00000000"; 
-                        end loop;
+                else
+                    -- limpa registradores
+                    for i in 0 to (REG_BANK_SIZE - 1) loop
+                        reg_bank(i) <= ZERO_BYTE; 
+                    end loop;
                         
-                        -- pega configs basicas do array
-                        lcd_data <= config_instructions(config_int_index);
-                        lcd_rs   <= '0';
+                    -- pega configs basicas do array
+                    lcd_data <= config_instructions(config_int_index);
+                    lcd_rs   <= '0';
                         
-                        -- incrementa index e vai p estado de enviar comando pro lcd
-                        config_int_index := config_int_index + 1;
-                        fsm <= FSM_CONFIG_STATE_ONE;
+                    -- incrementa index e vai p estado de enviar comando pro lcd
+                    config_int_index := config_int_index + 1;
+                    fsm <= FSM_SEND_CMD_STATE_ONE;
 
-                    end if;
+                end if;
 
                 when FSM_SEND_CMD_STATE_ONE =>
 
@@ -105,19 +111,37 @@ begin
 
                     lcd_en <= '0';
                     fsm <= FSM_SEND_CMD_STATE_THREE;
-
+                
+                -- talvez nao precise desse estado
                 when FSM_SEND_CMD_STATE_THREE =>
 
                     fsm <= FSM_INITIAL_STATE;
 
                 when FSM_LOOP_STATE =>
+                    
+                    if enable = '1' then
 
-                    -- TODO
-                    -- varrer reg e printar no LCD
+                        -- varrer reg e printar no LCD
+                        for reg_index in 0 to (REG_BANK_SIZE - 1)  loop
 
-                    -- if enable = '1' then -- TODO: Talvez validar addr e enable tbm
+                            -- se tiver char na posicao, manda pro lcd
+                            if reg_bank(reg_index) /= ZERO_BYTE then
 
-                    -- end if;
+                                -- pega o char e manda pro lcd (setar a posicao que deve escrever de acordo com addr in)
+                                lcd_data <= reg_bank(reg_index);
+                                lcd_rs <= '0';
+
+                                fsm <= FSM_SEND_CMD_STATE_ONE;
+
+                            end if;
+                        end loop;
+
+                        reg_index := 0;
+
+                    end if;
+
+                when others =>
+
             end case;
         end if;
     end process;
