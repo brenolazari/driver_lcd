@@ -5,17 +5,21 @@ use ieee.std_logic_unsigned.all;
 
 entity driver_lcd is
 generic (
-    ZERO_BYTE                : std_logic_vector(7 downto 0) := "00000000";
-    BASIC_CONFIG             : std_logic_vector(7 downto 0) := "00111000";
-    CURSOR_CONTROL_CONFIG    : std_logic_vector(7 downto 0) := "00001111";
-    CURSOR_MVMT_CONFIG       : std_logic_vector(7 downto 0) := "00000110";
-    CLEAN_DISPLAY_CONFIG     : std_logic_vector(7 downto 0) := "00000001";
-    REG_BANK_SIZE            : integer := 32;
-    FSM_INITIAL_STATE        : std_logic_vector(2 downto 0) := "000";
-    FSM_SEND_CMD_STATE_ONE   : std_logic_vector(2 downto 0) := "001";
-    FSM_SEND_CMD_STATE_TWO   : std_logic_vector(2 downto 0) := "010";
-    FSM_SEND_CMD_STATE_THREE : std_logic_vector(2 downto 0) := "011";
-    FSM_LOOP_STATE           : std_logic_vector(2 downto 0) := "100"
+    ZERO_BYTE                    : std_logic_vector(7 downto 0) := "00000000";
+    BASIC_CONFIG                 : std_logic_vector(7 downto 0) := "00111000";
+    CURSOR_CONTROL_CONFIG        : std_logic_vector(7 downto 0) := "00001111";
+    CURSOR_MVMT_CONFIG           : std_logic_vector(7 downto 0) := "00000110";
+    CLEAN_DISPLAY_CONFIG         : std_logic_vector(7 downto 0) := "00000001";
+    REG_BANK_SIZE                : integer := 32;
+    FSM_INITIAL_STATE            : std_logic_vector(3 downto 0) := "0000";
+    FSM_SEND_CMD_STATE_ONE       : std_logic_vector(3 downto 0) := "0001";
+    FSM_SEND_CMD_STATE_TWO       : std_logic_vector(3 downto 0) := "0010";
+    FSM_SEND_CMD_STATE_THREE     : std_logic_vector(3 downto 0) := "0011";
+    FSM_LOOP_STATE               : std_logic_vector(3 downto 0) := "0100";
+    FSM_SET_POSITION_STATE_ONE   : std_logic_vector(3 downto 0) := "0101";
+    FSM_SET_POSITION_STATE_TWO   : std_logic_vector(3 downto 0) := "0110";
+    FSM_SET_POSITION_STATE_THREE : std_logic_vector(3 downto 0) := "0111";
+    FSM_SEND_CHAR                : std_logic_vector(3 downto 0) := "1000"
 );
 port (
 
@@ -54,10 +58,9 @@ end driver_lcd;
 
 architecture driver_lcd_arch of driver_lcd is
 
-    -- fsm varre oo banco de registrador e escreve no lcd
-        -- primeiro estado deve configurar o display
-        -- se ligar de ir setando a poriscoa do cursor (pular linha por ex) do lcd
-    signal fsm    : std_logic_vector(2 downto 0) := FSM_INITIAL_STATE;
+    signal fsm         : std_logic_vector(3 downto 0) := FSM_INITIAL_STATE;
+    signal address_byte: std_logic_vector(7 downto 0) := ZERO_BYTE;
+    signal position    : std_logic_vector(7 downto 0) := ZERO_BYTE;
 
     -- CONFIGS BASICAS... DEVE RODAR NO PRIMEIRO ESTADO
     type config_instructions_array is array (0 to 3) of std_logic_vector(7 downto 0);
@@ -69,13 +72,13 @@ architecture driver_lcd_arch of driver_lcd is
 
 begin
 
-    process (clock, reset)
-    variable config_int_index : integer := 0;
-    variable reg_index        : integer := 0;
+    LCD: process (clock, reset)
+    variable config_int_index  : integer := 0;
+    variable reg_current_index : integer := 0;
     begin
         if reset = '1' then
-            config_int_index := 0;
-            reg_index := 0;
+            config_int_index  := 0;
+            reg_current_index := 0;
             fsm <= FSM_INITIAL_STATE;
         elsif clock'event and clock = '1' and reset = '0' then
             case fsm is
@@ -87,11 +90,13 @@ begin
                     fsm <= FSM_LOOP_STATE;
                     
                 else
-                    -- limpa registradores
-                    for i in 0 to (REG_BANK_SIZE - 1) loop
-                        reg_bank(i) <= ZERO_BYTE; 
-                    end loop;
-                        
+		    if (config_int_index = 0) then
+                    	-- limpa registradores
+                    	for i in 0 to (REG_BANK_SIZE - 1) loop
+                        	reg_bank(i) <= ZERO_BYTE; 
+                    	end loop;
+		    end if ;
+		                        
                     -- pega configs basicas do array
                     lcd_data <= config_instructions(config_int_index);
                     lcd_rs   <= '0';
@@ -118,31 +123,76 @@ begin
                     fsm <= FSM_INITIAL_STATE;
 
                 when FSM_LOOP_STATE =>
-                    
-                    if enable = '1' then
 
                         -- varrer reg e printar no LCD
-                        for reg_index in 0 to (REG_BANK_SIZE - 1)  loop
+                        for reg_index in reg_current_index to (REG_BANK_SIZE - 1) loop
 
                             -- se tiver char na posicao, manda pro lcd
                             if reg_bank(reg_index) /= ZERO_BYTE then
 
-                                -- pega o char e manda pro lcd (setar a posicao que deve escrever de acordo com addr in)
-                                lcd_data <= reg_bank(reg_index);
+				-- seta posicao do cursor
+				address_byte <= std_logic_vector(to_unsigned(reg_index, address_byte'length));
+				-- 00010001 (17)
+				
+				-- comando para setar posicao no lcd
+				position(7) <= '1';
+				position(6) <= address_byte(4); -- linha
+				position(5) <= '0';
+				position(4) <= '0';
+				position(3) <= address_byte(3); -- coluna 
+				position(2) <= address_byte(2); -- coluna 
+				position(1) <= address_byte(1); -- coluna 
+				position(0) <= address_byte(0); -- coluna 
+							                                
+                                -- antes de mandar o char, seta a o posicao no lcd
+                                lcd_data <= position;
                                 lcd_rs <= '0';
-
-                                fsm <= FSM_SEND_CMD_STATE_ONE;
-
+				
+				-- char a ser enviado depois de setar a posicao
+				--aux_char <= reg_bank(reg_index);
+				
+				-- mantem o indice atual q ta varrendo o reg_bank
+				--reg_current_index := reg_index;
+                                fsm <= FSM_SET_POSITION_STATE_ONE;
+				--exit;
                             end if;
+				
+			   --reg_current_index := reg_index;
+
                         end loop;
 
-                        reg_index := 0;
+                        reg_current_index := 0;
 
-                    end if;
+		when FSM_SET_POSITION_STATE_ONE =>
+			lcd_en <= '1';
+                    	fsm <= FSM_SET_POSITION_STATE_TWO;
+			
+		when FSM_SET_POSITION_STATE_TWO =>
+			lcd_en <= '0';
+                    	fsm <= FSM_SET_POSITION_STATE_THREE;
 
+		when FSM_SET_POSITION_STATE_THREE =>
+			fsm <= FSM_SEND_CHAR;
+
+		when FSM_SEND_CHAR =>
+			--lcd_data <= reg_bank(reg_current_index);
+			lcd_rs <= '1';
+
+			fsm <= FSM_SEND_CMD_STATE_ONE;
                 when others =>
 
             end case;
         end if;
+    end process;
+
+    BANK: process (clock, reset)
+    begin
+        if reset = '1' then
+            -- fsm <= FSM_INITIAL_STATE;
+        elsif clock'event and clock = '1' and reset = '0' then
+		if enable = '1' then
+			reg_bank(to_integer(unsigned(addr))) <= data;
+		end if;  
+	end if;
     end process;
 end driver_lcd_arch;
